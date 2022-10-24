@@ -9,7 +9,7 @@
  - go into that folder
  - create virtual env
   ```
-  pipenv install flask
+  pipenv install flask pymysql flask-bcrypt
   ```
   - `WARNING!` look for the files __pipfile__ && __pipfile.lock__
     - if you do not see these you need to figure it out right away
@@ -17,13 +17,32 @@
 ```
  pipenv shell
 ```
+```
  - set up the file structure
-    ```
+
      - Main app folder
+        -flask_app
+            -config
+                -mysqlconnection.py
+            -controllers
+                -controller_tablename.py
+                -controller_routes.py
+            -models
+                -model_table_name.py
+            -Static
+                -css
+                    -style.css
+                -js
+                    -script.js
+            -Templates
+                -index.html
+                -template.html
+            -__init__.py
        - pipfile
        - pipfile.lock
        - server.py
-    ```
+```
+
 - input boilerplate code into files
 - test to make sure your application works!
   ```
@@ -34,25 +53,9 @@
 
     ## server.py
 ```py
-from flask import Flask, render_template, request, redirect, session
-app = Flask(__name__)
-app.secret_key = 'keep it secret, keep it safe'
+from flask_app import app
+from flask_app.controllers import controller_tablename, controller_routes
 
-@app.route('/show')
-def show_user():
-    return render_template('show.html', name_on_template=session['username'], email_on_template=session['useremail'])
-    
-@app.route('/users', methods=['POST'])
-def create_user():
-    print("Got Post Info")
-    # Here we add two properties to session to store the name and email
-    session['username'] = request.form['name']
-    session['useremail'] = request.form['email']
-    return redirect('/show')
-
-@app.route('/')          
-def hello_world():
-    return render_template('index.html')  
 if __name__=="__main__":       
     app.run(debug=True)
 ```
@@ -80,7 +83,7 @@ class MySQLConnection:
                 query = cursor.mogrify(query, data)
                 print("Running Query:", query)
      
-                cursor.execute(query)
+                cursor.execute(query, data)
                 if query.lower().find("insert") >= 0:
                     # INSERT queries will return the ID NUMBER of the row inserted
                     self.connection.commit()
@@ -102,14 +105,19 @@ class MySQLConnection:
 # connectToMySQL receives the database we're using and uses it to create an instance of MySQLConnection
 def connectToMySQL(db):
     return MySQLConnection(db)
-
 ```
+
 ## model.py
 ```py
 # import the function that will return an instance of a connection
-from mysqlconnection import connectToMySQL
-# model the class after the friend table from our database
-class Friend:
+from flask_app.config.mysqlconnection import MySQLConnection, connectToMySQL
+from flask_app import DATABASE, bcrypt
+from flask import flash, session
+
+# make sure to call the DATABASE the schema you are targeting.
+DATABASE = 'tablename_db'
+
+class Tablename:
     def __init__( self , data ):
         self.id = data['id']
         self.first_name = data['first_name']
@@ -123,30 +131,44 @@ class Friend:
     # Now we use class methods to query our database
 
     @classmethod
-    def create(cls):
-      pass
+    def create(cls, data):
+      query = "INSERT INTO tablename (columname1. columname2) VALUES (%(columname1)s, %(columname2)s);"
+      tablename_id= MySQLConnection(DATABASE).query_db(query,data)
+      return tablename_id
 
     @classmethod
     def get_all(cls):
-        query = "SELECT * FROM friends;"
+        query = "SELECT * FROM tablename;"
+
         # make sure to call the connectToMySQL function with the schema you are targeting.
-        results = connectToMySQL('first_flask').query_db(query)
-        # Create an empty list to append our instances of friends
-        all_friends = []
-        # Iterate over the db results and create instances of friends with cls.
+        results = connectToMySQL(DATABASE).query_db(query)
+
+        if not results:
+            return[]
+
+        # Create an empty list to append our instances of tablename
+        all_tablename = []
+        # Iterate over the db results and create instances of tablename with cls.
         for dict in results:
-            all_friends.append( cls(dict) )
-        return all_friends
+            all_tablename.append( cls(dict) )
+        return all_tablename
 
     @classmethod
-    def get_one(cls):
-      pass
-    
+    def get_one(cls,data):
+      query = "SELECT * FROM tablename WHERE id = %(id)s"
+      
+      #datatype = LIST of DICTIONARY
+      result = connectToMySQL(DATABASE).query_db(query,data)
+
+      if not result:
+        return False
+      #return an instance
+      return cls( result[0] )
 
     @classmethod
-    def update_one(cls):
-      pass
-    
+    def update_one(cls, data):
+      query = "UPDATE tablename SET columname1=%(columname1)s, columname2=%(columname2)s WHERE id=%(id)s;"
+      return connectToMySQL(DATABASE).query_db(query,data)
     
     @classmethod
     def delete_one(cls):
@@ -158,4 +180,78 @@ class Friend:
       # get_all
       # update_one
       # delete_one
+```
+## Controller file
+```py
+from flask import render_template, redirect, request, session 
+from flask_app import app, bcrypt
+
+from flask_app.models.model_tablename import Tablename
+# from flask_app.config.helper import findBool IF YOU HAVE A CHECKBOCK OR BOOLEAN INPUT FROM POST
+
+
+@app.route('/tablename/new')
+def tablename_new():
+    return render_template('tablename_new.html')
+
+    # Action route
+@app.route('/tablename/create', methods=['POST'])
+def tablename_create():
+    data = {
+        **request.form
+    }
+    # data = findBool(data, 'Boolean Key Name') IF YOU HAVE A CHECKBOCK OR BOOLEAN INPUT FROM POST
+    Tablename.update_one(data)
+
+    return redirect('/')
+
+@app.route('/tablename/<int:id>')
+def tablename_show(id):
+
+    return render_template('burger_show.html')
+
+@app.route('/tablename/<int:id>/edit')
+def tablename_edit(id):
+    tablename = Tablename.get_one({'id':id})
+
+    return render_template('tablename_edit.html', tablename=tablename)
+
+@app.route('/tablename/<int:id>/update', methods=['POST'])
+def tablename_update(id):
+    data = {
+        **request.form
+        'id':id
+    }
+    # data = findBool(data, 'Boolean Key Name') IF YOU HAVE A CHECKBOCK OR BOOLEAN INPUT FROM POST
+
+    Tablename.update_one(data)
+    return redirect('/')
+
+@app.route('/tablename/<int:id>/delete')
+def tablename_delete(id):
+    Tablename.delete_one({'id': id})
+
+    return redirect('/')
+```
+
+## Controller_Routes.py
+```py
+from flask import render_template, redirect, request, session 
+from flask_app import app, bcrypt
+
+from flask_app.models.model_tablename import Tablename
+
+@app.route('/')          
+def hello_world():
+    return render_template('index.html')  
+```
+
+## __init__.py
+```py
+from flask import Flask
+from flask_bcrypt import Bcrypt
+app = Flask(__name__)
+app.secret_key = "10a34980-7359-4624-82e9-cc4f8b9ab963"
+
+bcrypt = Bcrypt(app)
 ```
